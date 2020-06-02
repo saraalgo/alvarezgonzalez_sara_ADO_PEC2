@@ -1,0 +1,10 @@
+INFO [2020-06-02 13:28:08] $x
+INFO [2020-06-02 13:28:08] list(`Exact test 1` = rownames(selec1), `Exact test 2` = rownames(selec2), 
+INFO [2020-06-02 13:28:08]     `Exact test 3` = rownames(selec3))
+INFO [2020-06-02 13:28:08] 
+INFO [2020-06-02 13:28:08] $fill
+INFO [2020-06-02 13:28:08] brewer.pal(3, "Pastel2")
+INFO [2020-06-02 13:28:08] 
+INFO [2020-06-02 13:28:08] $filename
+INFO [2020-06-02 13:28:08] NULL
+INFO [2020-06-02 13:28:08] 
