@@ -25,7 +25,7 @@ library(tweeDEseq)
 library(edgeR)
 ```
 ***
-## 0.Extraer datos
+## 0. Extraer datos
 
 Cargamos los datos que nos dan:
 
@@ -50,24 +50,61 @@ ELI_10 <- sample_n(ELI, 10)
 
 columnas <- rbind(NIT_10,SFI_10,ELI_10)
 grupos <- as.factor(columnas$Group)
+colNIT_SFI <- rbind(NIT_10,SFI_10)
+g1 <- factor(colNIT_SFI$Group)
+colSFI_ELI <- rbind(SFI_10,ELI_10)
+g2 <- factor(colSFI_ELI$Group)
+colNIT_ELI <- rbind(NIT_10,ELI_10)
+g3 <- factor(colNIT_ELI$Group)
 ```
 
 Finalmente extraer con las variables anteriores los datos con los que se va a trabajar:
 
 ```{r}
-Grupo1 <- counts[,NIT_10$Sample_Name]
-Grupo2 <- counts[,SFI_10$Sample_Name]
-Grupo3 <- counts[,ELI_10$Sample_Name]
+nit <- counts[,NIT_10$Sample_Name]
+sfi <- counts[,SFI_10$Sample_Name]
+eli <- counts[,ELI_10$Sample_Name]
 
-datos <- cbind(Grupo1,Grupo2,Grupo3)
+datos <- cbind(nit,sfi,eli)
 
 #write.csv(datos,"datos.csv", row.names = FALSE)
 ```
 
+## 1. Filtrado
 
-## 1. Normalización y filtrado
+En primer lugar haremos un pequeño análisis de calidad:
 
-En primer lugar, debido a que ya se ha filtrado seleccionando aleatoriamente solo las columnas con las que vamos a trabajar, llevaremos a cabo un normalizado **TMM**, no es necesario definirlo con la función *normalizeCounts*, ya que por defecto es la que hace:
+- Miraremos si en nuestro datos se encuentra algún NA:
+
+```{r}
+table(is.na(datos))
+```
+
+- Para simplicar el análisis y evitar tratar con datos de expresión que no aporten y solo puedan perjudicar al estudio, se eliminarán las muestras de expresión con media igual a 0.
+
+```{r}
+med_gen<-apply(datos, 1, mean)
+table(med_gen == 0)
+boxplot(med_gen)
+
+borrar<-datos[which(med_gen ==0),]
+i<-intersect(rownames(borrar), rownames(datos))
+datos<-datos[!rownames(datos)%in% i,]
+```
+
+Así pues han sido eliminados **10234**, reduciendo a **45968** datos de expresión.
+
+Podemos ver a través de un gráfico de barras la expresión que van a presentar los loci de nuestros datos, observando que aunque en general va a ser baja, en algunos es bastante destcable:
+
+```{r}
+media_genes_elim<-apply(datos, 1, mean)
+barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+```
+
+
+## 2. Normalización
+
+Ahora que hemos simplificado un poco los datos, llevaremos a cabo un normalizado **TMM**, no es necesario definirlo con la función *normalizeCounts*, ya que por defecto es la que hace:
 
 ```{r}
 datos_f <- normalizeCounts(datos)
@@ -77,6 +114,168 @@ maPlot(datos_f[,1], datos_f[,2],
 grid(col="black")
 title("normalización TMM")
 ```
+
+
+Podemos observar el efecto de la normalización mirando las expresiones medias de cada gen, comparando los datos en crudo y los datos normalizados:
+
+```{r}
+par(mfrow=c(1,2))
+
+media_genes_elim<-apply(datos, 1, mean)
+barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+
+media_genes_nor<-apply(datos_f, 1, mean)
+barplot(media_genes_nor,main = 'Barplot expresión normalizada', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+
+```
+
+## 2. Identificación de genes diferencialmente expresados (DE)
+
+Para hacer este paso, existen principalmente tres paquetes para hacerlo con características diferentes: *edgeR*, *DESeq* y *tweeDEseq*. En nuestro caso se ha decidido proceder con **edgeR**.
+
+Separamos los grupos para las comparaciones parciales:
+
+```{r}
+primer <- cbind(nit,sfi)
+segun <- cbind(sfi,eli)
+terc <- cbind(nit,eli)
+```
+
+Primero haremos la comparación de los sujetos de **NIT** y **SFI**:
+
+```{r}
+d1 <- DGEList(counts=primer, group=g1)
+d1 <- estimateCommonDisp(d1)
+d1 <- estimateTagwiseDisp(d1)
+res.common1  <- exactTest(d1, pair=c("NIT", "SFI"), dispersion="common")
+res.tagwise1 <- exactTest(d1, pair=c("NIT", "SFI"), dispersion="tagwise")
+
+
+# Los p-values se corrigen on la función topTags, y nos quedamos con el common porque con tagwise no conseguiríamos ningún DE coincidente.
+
+top_com1 <- head(topTags(res.common1, n=Inf))
+sum(top_com1$table[,4] < 0.05)
+
+top_tag1 <- head(topTags(res.tagwise1, n=Inf))
+sum(top_tag1$table[,4] < 0.05)
+
+par(mfrow=c(1,2))
+plotBCV(d1, cex=0.4)
+
+hist(top_com1$table$FDR, main = 'Histograma Tagwise con p-values ajustados')
+abline(v=0.05, col = 'red')
+
+# así se calculan los genes up/down regulados:
+selec1 <- top_com1$table$FDR < 0.05 & abs(top_com1$table$logFC) > 1
+selec1 <- top_com1$table[selec1, ]
+selec1$updown <- factor(ifelse(selec1$logFC > 0, "up", "down"))
+head(selec1)
+```
+
+A continuación la comparación de los sujetos de **SFI** y **ELI**:
+
+```{r}
+d2 <- DGEList(counts=segun, group=g2)
+d2 <- estimateCommonDisp(d2)
+d2 <- estimateTagwiseDisp(d2)
+res.common2  <- exactTest(d2, pair=c("SFI", "ELI"), dispersion="common")
+res.tagwise2 <- exactTest(d2, pair=c("SFI", "ELI"), dispersion="tagwise")
+
+# Los p-values se corrigen on la función topTags, y nos quedamos con el common porque con tagwise no conseguiríamos ningún DE coincidente.
+
+top_com2 <- head(topTags(res.common2, n=Inf))
+sum(top_com2$table[,4] < 0.05)
+
+top_tag2 <- head(topTags(res.tagwise2, n=Inf))
+sum(top_tag2$table[,4] < 0.05)
+
+par(mfrow=c(1,2))
+plotBCV(d2, cex=0.4)
+
+hist(top_com2$table$FDR, main = 'Histograma Tagwise con p-values ajustados')
+abline(v=0.05, col = 'red')
+
+# así se calculan los genes up/down regulados:
+selec2 <- top_com2$table$FDR < 0.05 & abs(top_com2$table$logFC) > 1
+selec2 <- top_com2$table[selec2, ]
+selec2$updown <- factor(ifelse(selec2$logFC > 0, "up", "down"))
+head(selec2)
+```
+
+Finalmente, la comparación de los sujetos de **NIT** y **ELI**:
+
+```{r}
+d3 <- DGEList(counts=terc, group=g3)
+d3 <- estimateCommonDisp(d3)
+d3 <- estimateTagwiseDisp(d3)
+res.common3  <- exactTest(d3, pair=c("NIT", "ELI"), dispersion="common")
+res.tagwise3 <- exactTest(d3, pair=c("NIT", "ELI"), dispersion="tagwise")
+
+# Los p-values se corrigen on la función topTags, y nos quedamos con el common porque con tagwise no conseguiríamos ningún DE coincidente.
+
+top_com3 <- head(topTags(res.common3, n=Inf))
+sum(top_com3$table[,4] < 0.05)
+
+top_tag3 <- head(topTags(res.tagwise3, n=Inf))
+sum(top_tag3$table[,4] < 0.05)
+
+par(mfrow=c(1,2))
+plotBCV(d3, cex=0.4)
+
+hist(top_com3$table$FDR, main = 'Histograma Tagwise con p-values ajustados')
+abline(v=0.05, col = 'red')
+
+# así se calculan los genes up/down regulados:
+selec3 <- top_com3$table$FDR < 0.05 & abs(top_com3$table$logFC) > 1
+selec3 <- top_com3$table[selec3, ]
+selec3$updown <- factor(ifelse(selec3$logFC > 0, "up", "down"))
+head(selec3)
+```
+
+En este *diagrama de Venn* podemos observar los genes que fueron DE en las tres comparaciones, y cuáles de ellos coinciden entre una comparación y otra.
+
+```{r}
+library(VennDiagram)
+library(RColorBrewer)
+vd <- venn.diagram(x = list("Exact test 1" = rownames(selec1), "Exact test 2" = rownames(selec2),"Exact test 3" = rownames(selec3)), fill = brewer.pal(3, "Pastel2"), filename = NULL)
+grid.draw(vd)
+```
+
+Tendremos por tanto dos intersectos de los genes DE de las tres comparaciones, debido a que como pudimos observar en el diagrama anterior, existen unos genes comunes para las comparaciones de **NIT-SFI** y **SFI-ELI** y otro común para las comparaciones **SFI-ELI** y **NIT-ELI**:
+```{r}
+comunes_12 <- intersect(rownames(selec1),rownames(selec2))
+comunes_12
+comunes_23 <- intersect(rownames(selec2),rownames(selec3))
+comunes_23
+
+up_1 <- selec1$updown=="up"
+up_1 <- rownames(selec1[up_1,])
+up_2 <- selec2$updown=="up"
+up_2 <- rownames(selec2[up_2,])
+up_3 <- selec3$updown=="up"
+up_3 <- rownames(selec3[up_3,])
+up_12 <- intersect(up_1,up_2)
+up_12
+up_23 <- intersect(up_2,up_3)
+up_23
+
+down_1 <- selec1$updown=="down"
+down_1 <- rownames(selec1[down_1,])
+down_2 <- selec2$updown=="down"
+down_2 <- rownames(selec2[down_2,])
+down_3 <- selec3$updown=="down"
+down_3 <- rownames(selec3[down_3,])
+down_12 <- intersect(down_1,down_2)
+down_12
+down_23 <- intersect(down_2,down_3)
+down_23
+```
+
+
+
+
+
+
 
 
 
