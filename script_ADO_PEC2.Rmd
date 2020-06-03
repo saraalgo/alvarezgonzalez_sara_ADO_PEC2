@@ -66,6 +66,7 @@ sfi <- counts[,SFI_10$Sample_Name]
 eli <- counts[,ELI_10$Sample_Name]
 
 datos <- cbind(nit,sfi,eli)
+rownames(datos) <- counts[,1]
 
 #write.csv(datos,"datos.csv", row.names = FALSE)
 ```
@@ -136,100 +137,108 @@ Para hacer este paso, existen principalmente tres paquetes para hacerlo con cara
 Separamos los grupos para las comparaciones parciales:
 
 ```{r}
-primer <- cbind(nit,sfi)
-segun <- cbind(sfi,eli)
-terc <- cbind(nit,eli)
+primer <- cbind(datos[,1:10],datos[,11:20])
+segun <- cbind(datos[,11:20],datos[,21:30])
+terc <- cbind(datos[,1:10],datos[,21:30])
 ```
 
 Primero haremos la comparación de los sujetos de **NIT** y **SFI**:
 
 ```{r}
-d1 <- DGEList(counts=primer, group=g1)
-d1 <- estimateCommonDisp(d1)
-d1 <- estimateTagwiseDisp(d1)
+# Se aplica un refiltrado
+d <- DGEList(counts = primer, group = g1)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_primer <- rowSums(m>1) >= 2
+table(ridx_primer)
+d <- d[ridx_primer,]
+plotMDS(d)
+
+d1 <- estimateCommonDisp(d)
+dtag1 <- estimateTagwiseDisp(d1)
 res.common1  <- exactTest(d1, pair=c("NIT", "SFI"), dispersion="common")
-res.tagwise1 <- exactTest(d1, pair=c("NIT", "SFI"), dispersion="tagwise")
+res.tagwise1 <- exactTest(dtag1, pair=c("NIT", "SFI"), dispersion="tagwise")
 
+plotBCV(dtag1, cex=0.4)
 
-# Los p-values se corrigen on la función topTags, y nos quedamos con el common porque con tagwise no conseguiríamos ningún DE coincidente.
-
-top_com1 <- head(topTags(res.common1, n=Inf))
-sum(top_com1$table[,4] < 0.05)
-
-top_tag1 <- head(topTags(res.tagwise1, n=Inf))
-sum(top_tag1$table[,4] < 0.05)
-
-par(mfrow=c(1,2))
-plotBCV(d1, cex=0.4)
-
-hist(top_com1$table$FDR, main = 'Histograma Tagwise con p-values ajustados')
-abline(v=0.05, col = 'red')
+dec1 <- decideTestsDGE(res.common1,p=0.001, adjust="BH")
+dtag_primer <- rownames(d1)[as.logical(dec1)]
+plotSmear(res.common1, de.tags = dtag_primer)
+abline(h=c(-1,1),col="blue")
 
 # así se calculan los genes up/down regulados:
-selec1 <- top_com1$table$FDR < 0.05 & abs(top_com1$table$logFC) > 1
-selec1 <- top_com1$table[selec1, ]
-selec1$updown <- factor(ifelse(selec1$logFC > 0, "up", "down"))
-head(selec1)
+d1_df <- as.data.frame(dec1)
+d1_df[,2] <- rownames(res.common1)
+up1 <- d1_df[which(d1_df$`SFI-NIT`==1),]
+down1 <- d1_df[which(d1_df$`SFI-NIT`==-1),]
+summary(dec1)
+genes_1 <- c(up1$V2,down1$V2)
 ```
 
 A continuación la comparación de los sujetos de **SFI** y **ELI**:
 
 ```{r}
-d2 <- DGEList(counts=segun, group=g2)
-d2 <- estimateCommonDisp(d2)
-d2 <- estimateTagwiseDisp(d2)
+# Se aplica un refiltrado
+d <- DGEList(counts = segun, group = g2)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_segun <- rowSums(m>1) >= 2
+table(ridx_segun)
+d <- d[ridx_segun,]
+plotMDS(d)
+
+d2 <- estimateCommonDisp(d)
+dtag2 <- estimateTagwiseDisp(d2)
 res.common2  <- exactTest(d2, pair=c("SFI", "ELI"), dispersion="common")
-res.tagwise2 <- exactTest(d2, pair=c("SFI", "ELI"), dispersion="tagwise")
+res.tagwise2 <- exactTest(dtag2, pair=c("SFI", "ELI"), dispersion="tagwise")
 
-# Los p-values se corrigen on la función topTags, y nos quedamos con el common porque con tagwise no conseguiríamos ningún DE coincidente.
+plotBCV(dtag2, cex=0.4)
 
-top_com2 <- head(topTags(res.common2, n=Inf))
-sum(top_com2$table[,4] < 0.05)
-
-top_tag2 <- head(topTags(res.tagwise2, n=Inf))
-sum(top_tag2$table[,4] < 0.05)
-
-par(mfrow=c(1,2))
-plotBCV(d2, cex=0.4)
-
-hist(top_com2$table$FDR, main = 'Histograma Tagwise con p-values ajustados')
-abline(v=0.05, col = 'red')
+dec2 <- decideTestsDGE(res.common2,p=0.001, adjust="BH")
+dtag_segun <- rownames(d2)[as.logical(dec2)]
+plotSmear(res.common2, de.tags = dtag_segun)
+abline(h=c(-1,1),col="blue")
 
 # así se calculan los genes up/down regulados:
-selec2 <- top_com2$table$FDR < 0.05 & abs(top_com2$table$logFC) > 1
-selec2 <- top_com2$table[selec2, ]
-selec2$updown <- factor(ifelse(selec2$logFC > 0, "up", "down"))
-head(selec2)
+d2_df <- as.data.frame(dec2)
+d2_df[,2] <- rownames(res.common2)
+up2 <- d2_df[which(d2_df$`ELI-SFI`==1),]
+down2 <- d2_df[which(d2_df$`ELI-SFI`==-1),]
+summary(dec2)
+genes_2 <- c(up2$V2,down2$V2)
 ```
 
 Finalmente, la comparación de los sujetos de **NIT** y **ELI**:
 
 ```{r}
-d3 <- DGEList(counts=terc, group=g3)
-d3 <- estimateCommonDisp(d3)
-d3 <- estimateTagwiseDisp(d3)
+# Se aplica un refiltrado
+d <- DGEList(counts = terc, group = g3)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_terc <- rowSums(m>1) >= 2
+table(ridx_terc)
+d <- d[ridx_terc,]
+plotMDS(d)
+
+d3 <- estimateCommonDisp(d)
+dtag3 <- estimateTagwiseDisp(d3)
 res.common3  <- exactTest(d3, pair=c("NIT", "ELI"), dispersion="common")
-res.tagwise3 <- exactTest(d3, pair=c("NIT", "ELI"), dispersion="tagwise")
+res.tagwise3 <- exactTest(dtag3, pair=c("NIT", "ELI"), dispersion="tagwise")
 
-# Los p-values se corrigen on la función topTags, y nos quedamos con el common porque con tagwise no conseguiríamos ningún DE coincidente.
+plotBCV(dtag3, cex=0.4)
 
-top_com3 <- head(topTags(res.common3, n=Inf))
-sum(top_com3$table[,4] < 0.05)
-
-top_tag3 <- head(topTags(res.tagwise3, n=Inf))
-sum(top_tag3$table[,4] < 0.05)
-
-par(mfrow=c(1,2))
-plotBCV(d3, cex=0.4)
-
-hist(top_com3$table$FDR, main = 'Histograma Tagwise con p-values ajustados')
-abline(v=0.05, col = 'red')
+dec3 <- decideTestsDGE(res.common3,p=0.001, adjust="BH")
+dtag_terc <- rownames(d3)[as.logical(dec3)]
+plotSmear(res.common3, de.tags = dtag_terc)
+abline(h=c(-1,1),col="blue")
 
 # así se calculan los genes up/down regulados:
-selec3 <- top_com3$table$FDR < 0.05 & abs(top_com3$table$logFC) > 1
-selec3 <- top_com3$table[selec3, ]
-selec3$updown <- factor(ifelse(selec3$logFC > 0, "up", "down"))
-head(selec3)
+d3_df <- as.data.frame(dec3)
+d3_df[,2] <- rownames(res.common3)
+up3 <- d3_df[which(d3_df$`ELI-NIT`==1),]
+down3 <- d3_df[which(d3_df$`ELI-NIT`==-1),]
+summary(dec3)
+genes_3 <- c(up3$V2,down3$V2)
 ```
 
 En este *diagrama de Venn* podemos observar los genes que fueron DE en las tres comparaciones, y cuáles de ellos coinciden entre una comparación y otra.
@@ -237,43 +246,39 @@ En este *diagrama de Venn* podemos observar los genes que fueron DE en las tres 
 ```{r}
 library(VennDiagram)
 library(RColorBrewer)
-vd <- venn.diagram(x = list("Exact test 1" = rownames(selec1), "Exact test 2" = rownames(selec2),"Exact test 3" = rownames(selec3)), fill = brewer.pal(3, "Pastel2"), filename = NULL)
+vd <- venn.diagram(x = list("Genes DE NIT-SFI" = genes_1, "Genes DE SFI-ELI" = genes_2,"Genes DE NIT-ELI" = genes_3), fill = brewer.pal(3, "Pastel2"), filename = NULL)
 grid.draw(vd)
 ```
 
-Tendremos por tanto dos intersectos de los genes DE de las tres comparaciones, debido a que como pudimos observar en el diagrama anterior, existen unos genes comunes para las comparaciones de **NIT-SFI** y **SFI-ELI** y otro común para las comparaciones **SFI-ELI** y **NIT-ELI**:
+Tendremos por tanto un intersecto de los genes DE de las tres comparaciones con los **26** genes DE que hemos visto en el gráfico anterior:
 ```{r}
-comunes_12 <- intersect(rownames(selec1),rownames(selec2))
-comunes_12
-comunes_23 <- intersect(rownames(selec2),rownames(selec3))
-comunes_23
+comunes <- intersect(intersect(genes_1,genes_2),genes_3)
+comunes
+length(comunes)
 
-up_1 <- selec1$updown=="up"
-up_1 <- rownames(selec1[up_1,])
-up_2 <- selec2$updown=="up"
-up_2 <- rownames(selec2[up_2,])
-up_3 <- selec3$updown=="up"
-up_3 <- rownames(selec3[up_3,])
-up_12 <- intersect(up_1,up_2)
-up_12
-up_23 <- intersect(up_2,up_3)
-up_23
+up<-intersect(intersect(up1$V2,up2$V2),up3$V2)
+length(up)
 
-down_1 <- selec1$updown=="down"
-down_1 <- rownames(selec1[down_1,])
-down_2 <- selec2$updown=="down"
-down_2 <- rownames(selec2[down_2,])
-down_3 <- selec3$updown=="down"
-down_3 <- rownames(selec3[down_3,])
-down_12 <- intersect(down_1,down_2)
-down_12
-down_23 <- intersect(down_2,down_3)
-down_23
+down<-intersect(intersect(down1$V2,down2$V2),down3$V2)
+length(down)
 ```
 
 
+## 3.Anotación de los resultados
 
+```{r}
+library(biomaRt)
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
 
+genes_comunes<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =comunes, mart = mart)
+genes_comunes
+
+ups<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =up, mart = mart)
+ups
+
+downs<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =down, mart = mart)
+downs
+```
 
 
 
