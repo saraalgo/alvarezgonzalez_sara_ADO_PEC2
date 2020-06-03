@@ -23,6 +23,10 @@ library(dplyr)
 library(tweeDEseqCountData)
 library(tweeDEseq)
 library(edgeR)
+library(VennDiagram)
+library(RColorBrewer)
+library(biomaRt)
+library(topGO)
 ```
 ***
 ## 0. Extraer datos
@@ -244,8 +248,6 @@ genes_3 <- c(up3$V2,down3$V2)
 En este *diagrama de Venn* podemos observar los genes que fueron DE en las tres comparaciones, y cuáles de ellos coinciden entre una comparación y otra.
 
 ```{r}
-library(VennDiagram)
-library(RColorBrewer)
 vd <- venn.diagram(x = list("Genes DE NIT-SFI" = genes_1, "Genes DE SFI-ELI" = genes_2,"Genes DE NIT-ELI" = genes_3), fill = brewer.pal(3, "Pastel2"), filename = NULL)
 grid.draw(vd)
 ```
@@ -267,10 +269,10 @@ length(down)
 ## 3.Anotación de los resultados
 
 ```{r}
-library(biomaRt)
 mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
 
-genes_comunes<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =comunes, mart = mart)
+genes_comunes<-getBM(attributes =  c("hgnc_symbol"), filters = "ensembl_gene_id_version", values =comunes, mart = mart)
+genes_comunes <- genes_comunes[,1]
 genes_comunes
 
 ups<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =up, mart = mart)
@@ -281,7 +283,72 @@ downs
 ```
 
 
+## 4.Análisis de significación biológica (Gene Enrichment Analysis)
+
+```{r}
+#Debemos calcular también las anotaciones para el total de los genes con los que se ha trabajado
+genes_totales<-getBM(attributes =  c("hgnc_symbol","go_id"), filters = "ensembl_gene_id_version", values =rownames(datos), mart = mart)
+head(genes_totales,10)
 
 
+# Eliminamos los que no cuenten con GO, para que no interfieran
+borr <- which(genes_totales$go_id=="")
+dim(genes_totales)
+genes_totales <- genes_totales[-borr,]
+dim(genes_totales)
+
+# convertir en lista para poder calcular el objeto topGo
+l_genes <- unique(genes_totales$hgnc_symbol)
+lista <- list()
+for (i in l_genes) {
+  lista[[i]] = genes_totales[which(genes_totales$hgnc_symbol==i),]$go_id
+}
+head(lista,2)
+
+gen <- names(lista)
+gen_comparado <- factor(as.integer(gen %in% genes_comunes))
+table(gen_comparado)
+names(gen_comparado) <- gen
+
+GO_data <- new("topGOdata", ontology="BP", allGenes=gen_comparado,annot = annFUN.gene2GO, gene2GO = lista)
+
+# se le acplicará el test de Fisher al objeto topGo
+resFisher = runTest(GO_data, algorithm = 'classic', statistic = 'fisher')
+resFisher
+```
+
+De las **4399** anotaciones GO totales, **659** de 12 genes DE fueron analizados. De estos GO, **78** obtienen una significación de *p < 0.01*, debido a que aún son muchos para representar gráficamente, solo cogeremos los 25 primeros para que sea más sencillo de leer:
+
+```{r}
+Nodes = 25
+allRes = GenTable(GO_data, classicFisher = resFisher, topNodes = Nodes)
+head(allRes)
+
+
+# Plots
+plotEnrich = function(allRes, title){
+  # Plotting!
+  layout(t(1:2), widths = c(8,1))
+  par(mar=c(4, .5, .7, .7), oma = c(3, 15, 3, 4), las = 1)
+  
+  rbPal = colorRampPalette(c('red', 'white', 'blue'))
+  pvalue = as.numeric(gsub("<", "", allRes$classicFisher))
+  max_value = as.integer(max(-log(pvalue))) + 1
+  pv_range = exp(-seq(max_value, 0, -1))
+  allRes$Color = rbPal(max_value) [cut(pvalue, pv_range)]
+  
+  o = order(allRes$Significant, decreasing = T)
+  barplot(allRes$Significant[o], names.arg = allRes$Term[o], las = 2, horiz = T, col = allRes$Color[o],
+          xlab = "Number of sequences", main = title, cex.names = 0.85)
+  
+  image(0, seq(1, max_value), t(seq_along(seq(1, max_value))), col = rev(rbPal(max_value)), axes = F, ann = F)
+  pv_label = exp(-seq(log(1), -log(min(pvalue)), l = 6))
+  pv_label = formatC(pv_label, format = "e", digits = 2)
+  axis(4, at = seq(1, max_value, length = 6), labels = c(1, pv_label[2:6]), cex.axis = 0.85)
+  title("p.value", cex.main = 0.6)
+}
+
+plotEnrich(allRes = allRes, title = 'Enrichment Analysis')
+```
 
 </div>
