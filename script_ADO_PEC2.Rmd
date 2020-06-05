@@ -1,0 +1,709 @@
+---
+title: "PEC2 Análisis de Datos Ómicos"
+author: "Sara Álvarez González"
+date: "Mayo de 2020"
+output: 
+    html_document:
+      toc: true
+      toc_float: true
+    pdf_document:
+
+lang: es-ES
+---
+<div class=text-justify>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r paquetes, include=FALSE}
+setwd("C:/Users/Sara/Desktop/alvarezgonzalez_sara_ADO_PEC2")
+library(dplyr)
+library(tweeDEseqCountData)
+library(tweeDEseq)
+library(edgeR)
+library(VennDiagram)
+library(RColorBrewer)
+library(biomaRt)
+library(topGO)
+```
+
+```{r script, include=FALSE}
+counts = read.csv("counts.csv",header=T,sep = ";")
+target = read.csv("targets.csv",header=T,sep = ",")
+NIT <- subset(target,grepl("^(NIT)", target$Group))
+SFI <- subset(target,grepl("^(SFI)", target$Group))
+ELI <- subset(target,grepl("^(ELI)", target$Group))
+set.seed(12)
+NIT_10 <- sample_n(NIT, 10)
+SFI_10 <- sample_n(SFI, 10)
+ELI_10 <- sample_n(ELI, 10)
+columnas <- rbind(NIT_10,SFI_10,ELI_10)
+grupos <- as.factor(columnas$Group)
+colNIT_SFI <- rbind(NIT_10,SFI_10)
+g1 <- factor(colNIT_SFI$Group)
+colSFI_ELI <- rbind(SFI_10,ELI_10)
+g2 <- factor(colSFI_ELI$Group)
+colNIT_ELI <- rbind(NIT_10,ELI_10)
+g3 <- factor(colNIT_ELI$Group)
+nit <- counts[,NIT_10$Sample_Name]
+sfi <- counts[,SFI_10$Sample_Name]
+eli <- counts[,ELI_10$Sample_Name]
+datos <- cbind(nit,sfi,eli)
+rownames(datos) <- counts[,1]
+table(is.na(datos))
+med_gen<-apply(datos, 1, mean)
+table(med_gen == 0)
+boxplot(med_gen)
+borrar<-datos[which(med_gen ==0),]
+i<-intersect(rownames(borrar), rownames(datos))
+datos<-datos[!rownames(datos)%in% i,]
+media_genes_elim<-apply(datos, 1, mean)
+datos_f <- normalizeCounts(datos)
+primer <- cbind(datos[,1:10],datos[,11:20])
+segun <- cbind(datos[,11:20],datos[,21:30])
+terc <- cbind(datos[,1:10],datos[,21:30])
+d <- DGEList(counts = primer, group = g1)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_primer <- rowSums(m>1) >= 2
+table(ridx_primer)
+d <- d[ridx_primer,]
+d1 <- estimateCommonDisp(d)
+dtag1 <- estimateTagwiseDisp(d1)
+res.common1  <- exactTest(d1, pair=c("NIT", "SFI"), dispersion="common")
+res.tagwise1 <- exactTest(dtag1, pair=c("NIT", "SFI"), dispersion="tagwise")
+dec1 <- decideTestsDGE(res.common1,p=0.001, adjust="BH")
+dtag_primer <- rownames(d1)[as.logical(dec1)]
+d1_df <- as.data.frame(dec1)
+d1_df[,2] <- rownames(res.common1)
+up1 <- d1_df[which(d1_df$`SFI-NIT`==1),]
+down1 <- d1_df[which(d1_df$`SFI-NIT`==-1),]
+summary(dec1)
+genes_1 <- c(up1$V2,down1$V2)
+d <- DGEList(counts = segun, group = g2)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_segun <- rowSums(m>1) >= 2
+table(ridx_segun)
+d <- d[ridx_segun,]
+d2 <- estimateCommonDisp(d)
+dtag2 <- estimateTagwiseDisp(d2)
+res.common2  <- exactTest(d2, pair=c("SFI", "ELI"), dispersion="common")
+res.tagwise2 <- exactTest(dtag2, pair=c("SFI", "ELI"), dispersion="tagwise")
+dec2 <- decideTestsDGE(res.common2,p=0.001, adjust="BH")
+dtag_segun <- rownames(d2)[as.logical(dec2)]
+d2_df <- as.data.frame(dec2)
+d2_df[,2] <- rownames(res.common2)
+up2 <- d2_df[which(d2_df$`ELI-SFI`==1),]
+down2 <- d2_df[which(d2_df$`ELI-SFI`==-1),]
+summary(dec2)
+genes_2 <- c(up2$V2,down2$V2)
+d <- DGEList(counts = terc, group = g3)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_terc <- rowSums(m>1) >= 2
+table(ridx_terc)
+d <- d[ridx_terc,]
+d3 <- estimateCommonDisp(d)
+dtag3 <- estimateTagwiseDisp(d3)
+res.common3  <- exactTest(d3, pair=c("NIT", "ELI"), dispersion="common")
+res.tagwise3 <- exactTest(dtag3, pair=c("NIT", "ELI"), dispersion="tagwise")
+dec3 <- decideTestsDGE(res.common3,p=0.001, adjust="BH")
+dtag_terc <- rownames(d3)[as.logical(dec3)]
+d3_df <- as.data.frame(dec3)
+d3_df[,2] <- rownames(res.common3)
+up3 <- d3_df[which(d3_df$`ELI-NIT`==1),]
+down3 <- d3_df[which(d3_df$`ELI-NIT`==-1),]
+summary(dec3)
+genes_3 <- c(up3$V2,down3$V2)
+vd <- venn.diagram(x = list("Genes DE NIT-SFI" = genes_1, "Genes DE SFI-ELI" = genes_2,"Genes DE NIT-ELI" = genes_3), fill = brewer.pal(3, "Pastel2"), filename = NULL)
+comunes <- intersect(intersect(genes_1,genes_2),genes_3)
+length(comunes)
+up<-intersect(intersect(up1$V2,up2$V2),up3$V2)
+down<-intersect(intersect(down1$V2,down2$V2),down3$V2)
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+genes_comunes<-getBM(attributes =  c("hgnc_symbol"), filters = "ensembl_gene_id_version", values =comunes, mart = mart)
+genes_comunes <- genes_comunes[,1]
+ups<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =up, mart = mart)
+downs<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =down, mart = mart)
+genes_totales<-getBM(attributes =  c("hgnc_symbol","go_id"), filters = "ensembl_gene_id_version", values =rownames(datos), mart = mart)
+head(genes_totales,10)
+borr <- which(genes_totales$go_id=="")
+genes_totales <- genes_totales[-borr,]
+l_genes <- unique(genes_totales$hgnc_symbol)
+lista <- list()
+for (i in l_genes) {
+  lista[[i]] = genes_totales[which(genes_totales$hgnc_symbol==i),]$go_id
+}
+head(lista,2)
+gen <- names(lista)
+gen_comparado <- factor(as.integer(gen %in% genes_comunes))
+table(gen_comparado)
+names(gen_comparado) <- gen
+GO_data <- new("topGOdata", ontology="BP", allGenes=gen_comparado,annot = annFUN.gene2GO, gene2GO = lista)
+resFisher = runTest(GO_data, algorithm = 'classic', statistic = 'fisher')
+Nodes = 25
+allRes = GenTable(GO_data, classicFisher = resFisher, topNodes = Nodes)
+head(allRes)
+plotEnrich = function(allRes, title){
+  # Plotting!
+  layout(t(1:2), widths = c(8,1))
+  par(mar=c(4, .5, .7, .7), oma = c(3, 15, 3, 4), las = 1)
+  
+  rbPal = colorRampPalette(c('red', 'white', 'blue'))
+  pvalue = as.numeric(gsub("<", "", allRes$classicFisher))
+  max_value = as.integer(max(-log(pvalue))) + 1
+  pv_range = exp(-seq(max_value, 0, -1))
+  allRes$Color = rbPal(max_value) [cut(pvalue, pv_range)]
+  
+  o = order(allRes$Significant, decreasing = T)
+  barplot(allRes$Significant[o], names.arg = allRes$Term[o], las = 2, horiz = T, col = allRes$Color[o],
+          xlab = "Number of sequences", main = title, cex.names = 0.85)
+  
+  image(0, seq(1, max_value), t(seq_along(seq(1, max_value))), col = rev(rbPal(max_value)), axes = F, ann = F)
+  pv_label = exp(-seq(log(1), -log(min(pvalue)), l = 6))
+  pv_label = formatC(pv_label, format = "e", digits = 2)
+  axis(4, at = seq(1, max_value, length = 6), labels = c(1, pv_label[2:6]), cex.axis = 0.85)
+  title("p.value", cex.main = 0.6)
+}
+```
+***
+## 1. Abstract
+
+Actualmente, el estudio de los niveles de expresión génica se lleva a cabo con la técnica **RNA-seq**, la cual se basa en secuenciar el mRNA y posteriormente mapearlo en secuencias de referencia. En este trabajo, se va a estudiar el efecto de esta expresión buscando si existe diferencias en los resultados obtenidos si variamos los métodos de infiltración con tres técnicas diferentes (**NIT, SFI y ELI**) para un mismo tipo de tejido, en este caso, de la tiroides.
+
+Se puede encontrar en el repositorio de GIT **saraalgo/alvarezgonzalez_sara_ADO_PEC2** el git del proceso de construcción de este estudio para poder ser replicado.
+
+## 2. Objetivos
+
+El objetivo de este trabajo se llevará a cabo con 10 muestras aleatorias de los 3 tipos de datos diferentes (según la infiltración con la que fuera realizada la extracción de la muestra) que tendremos en los datos de RNA-seq, así se tratará de:
+
+- Llevar a cabo la comparación con las tres combinaciones posibles, en búsqueda de los genes DE y su análisis biológico. 
+- A su vez, comprobar cuáles son los genes que resultaron destacables en todas las infiltraciones y si efectivamente los resultados muestran que éstos van a ser parte de las funciones tiroideas como cabría esperar.
+
+## 3. Materiales y métodos
+
+En esta sección se comentará la naturaleza de los datos que se han manejado, su tratamiento y ejecución de código para obtener sendos resultados. Destacar que en esta sección se hará un análisis más cualitativo, y el código completo se encontrará en los apéndices de final.
+
+### 3.1 Descripción de los datos empleados
+
+A partir del repositorio **GTEx**, se nos han facilitado los datos de expresión *RNA-seq* para un análisis tiroideo. En este estudio, se realizaron tres tipos de inflitraciones con técnicas diferentes: **Not infiltrated tissues (NIT)**, **Small focal infiltrates (SFI)** y **Extensive lymphoid infiltrates (ELI)**. 
+
+Se extraerán los datos a trabajar a partir de dos documentos *csv*. Por una parte, **counts.csv** contendrá los datos de expresión RNA-seq para las 292 muestras totales que tiene este estudio para el tejido tiroideo. Por otra, en el documento **targets.csv** contaremos con una especificación de cada una de esas muestras que nos señalarán diferentes caraceríticas de las mismas, entre otras, señalar si se tratan de una infiltración u otra. Podremos encontrar que para la **NIT** un total de 236 muestras, para la **SFI** 42 y 14 para **ELI**. 
+
+Habiendo podido observar esto y señalando una semilla para poder ejecutarlo siempre con el mismo resultado, se seleccionarán 10 de cada una de las tres para realizar las comparaciones **NIT-SFI**, **SFI-ELI** y **NIT-ELI**. Con estas comparaciones buscaremos los genes DE y comprobaremos que tengan una significación biológica directamente relacionada con lo esperado.
+
+### 3.2 Métodos y herramientas
+
+Para llevar a cabo este trabajo se utilizó el probrama de *RStudio*, bajo el lenguaje *R* en una versión de Windows 10 y 3.6 del programa. Se ha desarrollado el script en un tipo de documento llamado *RMarkDown*, y exportado a formato *html* mostrando este resultado final.
+
+Para ejecutar las funciones necesarias para realizar este *análisis RNA-seq* se utilizó como principal gestor de librerías, **Bioconductor**, debido a que posee una gran cantidad de útiles librerías de R para trabajar con datos biológicos.
+
+### 3.3 Pasos a seguir en el análisis
+
+Siguiendo un poco el pipeline que nos facilita el enunciado de esta PEC, los pasos a seguir discurrieron principalmente en tres bloques, de la siguiente manera:
+
+#### 3.3.1 Extracción de las muestras aleatorias:
+
+A partir de un análisis de expresión genética ya procesado con la técnica de RNA-seq, se cargaron los datos de los **csv** facilitados y bucando que en los tres grupos hubiera 10 muestras de cada uno se creó un nuevo dataframe con el que trabajar, llamado **datos**:
+
+```{r}
+counts = read.csv("counts.csv",header=T,sep = ";")
+target = read.csv("targets.csv",header=T,sep = ",")
+
+# Se seleccionaron las secciones que nos interesaban del csv targets
+NIT <- subset(target,grepl("^(NIT)", target$Group))
+SFI <- subset(target,grepl("^(SFI)", target$Group))
+ELI <- subset(target,grepl("^(ELI)", target$Group))
+```
+
+Una vez tenemos la sección que nos interesa, con una semilla, extraemos 10 muestras aleatorias de cada uno de esos grupos y extraemos las secuencias equivalentes del csv de **counts**.
+
+```{r}
+nit <- counts[,NIT_10$Sample_Name]
+sfi <- counts[,SFI_10$Sample_Name]
+eli <- counts[,ELI_10$Sample_Name]
+
+datos <- cbind(nit,sfi,eli)
+rownames(datos) <- counts[,1]
+
+dim(datos)
+```
+
+
+Quedando por tanto, las 56202 expresiones de genes y las 30 columnas de las infiltraciones. 
+
+#### 3.3.2 Normalización de los datos
+
+Para llevar a cabo este paso, antes se lleva a cabo un pequeño preprocesamiento para limpiarlo y asegurarse de que haya las mínimas alteraciones por ruido en el procesamiento posterior, eliminando *NAs* y quitando aquellos loci que no fueran a tener demasiada significancia para el análisis, debido a que su media era 0
+
+```{r}
+table(is.na(datos))
+med_gen<-apply(datos, 1, mean)
+table(med_gen == 0)
+
+barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+```
+
+```{r, include=FALSE}
+borrar<-datos[which(med_gen ==0),]
+i<-intersect(rownames(borrar), rownames(datos))
+datos<-datos[!rownames(datos)%in% i,]
+```
+
+Podemos ver que, aunque no tenía NAs, sí se eliminaron 10234 loci que apenas tenían importancia y así evitar que interfirieran. En la gráfica vemos que claramente va a haber algunos genes sobreexpresados.
+
+La **normalización** sería el siguiente paso, esta técnica es un reescalado lineal de las variables para así observar los patrones más claramente, obteniendo que las nuevas variables que se van a conseguir tengan una media de 0 y desviación típica de 1. Aunque existen varios tipos de normalizaciones para este tipo de datos, se decidió llevar a cabo el llamado **TMM**. Este tipo de normalización especialmente diseñada para producción de RNA, comparte características con la normalización de microarrays, e intenta preservar las propiedades de las muestras que vamos a analizar, ayudando así a que tenga aplicaciones para la comparación de expresión de genes.
+
+Podemos observar mediante el *MAplot* que efectivamente los datos, una vez sometidos a esta normalización con la función *normalizeCounts* van a mostrar una menos variabilidad, permitiendo un mejor análisis posterior.
+
+```{r}
+datos_f <- normalizeCounts(datos)
+maPlot(datos_f[,1], datos_f[,2],
+       pch=19, cex=.5, ylim=c(-8,8), 
+       allCol="darkgrey", lowess=TRUE)
+grid(col="black")
+title("normalización TMM")
+```
+
+#### 3.3.3 Análisis diferencial
+
+Una vez obtenemos los datos definitivos con los que ya podremos realizar las comparaciones, se realiza un análisis diferencia con ayuda del paquete **edgeR**. Este paquete lleva a cabo funcionalidades tanto clásicas como del glm, utilizando métodos Bayes que van a permitir la estimación de la variación biológica específica de los genes.
+
+Debido a que vamos a llevar a cabo tres comparaciones, la búsqueda de los **genes DE** se llevará a cabo para cada una de ellas por separado, y después se pondrán en común.
+
+## 4. Resultados y discusión
+
+Aquí se comentarán los resultados obtenidos en los análisis diferenciales aplicados y puestas en común, junto con la interpretación de la significación biológica hallada.
+
+### 4.1 Comparación NIT-SFI
+
+Para todas, aunque solo se comentará en esta primera, se realizó la separación de los dos grupos del dataframe principal, y a continuación otro filtrado con la función *sweep*, requiriendo que el gen presente una frecuencia de al menos 1 lectura por cada millón mapeado.
+
+```{r}
+primer <- cbind(datos[,1:10],datos[,11:20])
+table(ridx_primer)
+```
+
+A continuación se realiza el análisis diferencial con **edgeR**, y utilizando las dispersiones *"common"*, debido a que aunque las *"tagwise"* son más específicas, al hacerlo en las tres no se encontrarían genes DE comunes. Finalmente, se lleva a cabo un *test exacto de Fisher* para calcular los genes DE, y después establecer cuales están sobre o infra expresados.
+
+```{r}
+plotSmear(res.common1, de.tags = dtag_primer)
+abline(h=c(-1,1),col="blue")
+summary(decideTestsDGE(res.common1,p=0.001, adjust="BH"))
+length(genes_1 <- c(up1$V2,down1$V2))
+```
+
+Observamos pues que tendremos 57 genes sobreexpresado y 337 infraexpresados, un total de 394, y el gráfico que los ilustra de manera intuitivamente distinguible.
+
+### 4.2 Comparación SFI-ELI
+
+Con la misma metodología que en el anterior apartado, realizaremos este análisis diferencial:
+
+```{r}
+segun <- cbind(datos[,11:20],datos[,21:30])
+table(ridx_segun)
+plotSmear(res.common2, de.tags = dtag_segun)
+abline(h=c(-1,1),col="blue")
+summary(decideTestsDGE(res.common2,p=0.001, adjust="BH"))
+length(genes_2 <- c(up2$V2,down2$V2))
+```
+
+En esta segunda comparación, obtenemos un total de 211 genes DE, de los cuáles 170 están sobreexpresados y 41 infraexpresados.
+
+### 4.3 Comparación NIT-ELI
+
+Por último, este sería la tercera comparación y los genes DE de ella:
+
+```{r}
+terc <- cbind(datos[,1:10],datos[,21:30])
+table(ridx_terc)
+plotSmear(res.common3, de.tags = dtag_terc)
+abline(h=c(-1,1),col="blue")
+summary(decideTestsDGE(res.common3,p=0.001, adjust="BH"))
+length(genes_3 <- c(up3$V2,down3$V2))
+```
+
+Obteniendo un total de 288 genes DE (66 sobre y 162 infraexpresados).
+
+### 4.4 Comparación de las tres combinaciones
+
+Para obtener los genes DE comunes de las tres combinaciones se realizó una intersección de lo obtenido en cada una y se realizó un *gráfico de Venn* para complementarlo gráficamente.
+
+```{r}
+vd <- venn.diagram(x = list("Genes DE NIT-SFI" = genes_1, "Genes DE SFI-ELI" = genes_2,"Genes DE NIT-ELI" = genes_3), fill = brewer.pal(3, "Pastel2"), filename = NULL)
+grid.draw(vd)
+
+comunes <- intersect(intersect(genes_1,genes_2),genes_3)
+comunes
+length(comunes)
+```
+
+Se obtuvieron así **26** comunes.
+
+*En el apéndice se puede observar también que se calcularon los intersectos con los **up** y los **down** comunes y también se comprobó su anotación.* 
+
+### 4.5 Anotación
+
+Se realizó la anotación de estos genes DE a través de las funcionalidades de *biomaRt*.
+
+```{r}
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+
+genes_comunes<-getBM(attributes =  c("hgnc_symbol"), filters = "ensembl_gene_id_version", values =comunes, mart = mart)
+genes_comunes <- genes_comunes[,1]
+genes_comunes
+```
+
+### 4.6 Análisis de significación biológica
+
+Para este paso, se utilizó la librería **topGo** para crear un objeto topGo con los 26 genes DE, a partir de los datos iniciales. Para realizar la prueba de enriquecimiento se aplicó además una *prueba de Fisher* para así obtener las anotaciones GO asociadas que resultaran significativas. 
+
+```{r}
+GO_data <- new("topGOdata", ontology="BP", allGenes=gen_comparado,annot = annFUN.gene2GO, gene2GO = lista)
+resFisher = runTest(GO_data, algorithm = 'classic', statistic = 'fisher')
+resFisher
+```
+
+De las **4399** anotaciones GO totales, **659** de 12 genes DE fueron analizados. De estos GO, **78** obtienen una significación de *p < 0.01*.
+
+## 6. Conclusión
+
+Para poder hace alguna interpretación biológica y sacar una breve conclusión de los datos obtenidos, se ha realizado el plot del enriquecimiento realizado para la significación biológica. En concreto, se representan 25 de klas 78 anotaciones más importantes significativamente, para facilitar su lectura.
+
+```{r}
+plotEnrich(allRes = allRes, title = 'Enrichment Analysis')
+allRes$Term
+```
+
+Como podemos observar, la todos las funciones asociadas a los GO más significativos van a estar relacionados con funciones claramente vinculadas a la glándula tiroidea, tal y como se esperaba debido a que son muestras de este mismo tejido. Con lo cual, a pesar de tratarse de infiltraciones diferentes, las tres van a recoger expresiones de RNA-seq, cuya anotación biológica va a estar vinculada al sistema inmune y la tiroides.
+
+## 7. Apéndice
+
+En esta sección está el código completo utilizado.
+
+### 7.1 Extraer datos
+
+Cargamos los datos que nos dan:
+
+```{r}
+counts = read.csv("counts.csv",header=T,sep = ";")
+target = read.csv("targets.csv",header=T,sep = ",")
+```
+
+Primero extraer las que son del mismo grupo a variables separadas para después seleccionar 10 de cada uno de los grupos:
+
+```{r}
+NIT <- subset(target,grepl("^(NIT)", target$Group))
+SFI <- subset(target,grepl("^(SFI)", target$Group))
+ELI <- subset(target,grepl("^(ELI)", target$Group))
+
+set.seed(12)
+
+NIT_10 <- sample_n(NIT, 10)
+SFI_10 <- sample_n(SFI, 10)
+ELI_10 <- sample_n(ELI, 10)
+
+
+columnas <- rbind(NIT_10,SFI_10,ELI_10)
+grupos <- as.factor(columnas$Group)
+colNIT_SFI <- rbind(NIT_10,SFI_10)
+g1 <- factor(colNIT_SFI$Group)
+colSFI_ELI <- rbind(SFI_10,ELI_10)
+g2 <- factor(colSFI_ELI$Group)
+colNIT_ELI <- rbind(NIT_10,ELI_10)
+g3 <- factor(colNIT_ELI$Group)
+```
+
+Finalmente extraer con las variables anteriores los datos con los que se va a trabajar:
+
+```{r}
+nit <- counts[,NIT_10$Sample_Name]
+sfi <- counts[,SFI_10$Sample_Name]
+eli <- counts[,ELI_10$Sample_Name]
+
+datos <- cbind(nit,sfi,eli)
+rownames(datos) <- counts[,1]
+
+#write.csv(datos,"datos.csv", row.names = FALSE)
+```
+
+### 7.2 Filtrado
+
+En primer lugar haremos un pequeño análisis de calidad:
+
+- Miraremos si en nuestro datos se encuentra algún NA:
+
+```{r}
+table(is.na(datos))
+```
+
+- Para simplicar el análisis y evitar tratar con datos de expresión que no aporten y solo puedan perjudicar al estudio, se eliminarán las muestras de expresión con media igual a 0.
+
+```{r}
+med_gen<-apply(datos, 1, mean)
+table(med_gen == 0)
+boxplot(med_gen)
+
+borrar<-datos[which(med_gen ==0),]
+i<-intersect(rownames(borrar), rownames(datos))
+datos<-datos[!rownames(datos)%in% i,]
+```
+
+Así pues han sido eliminados **10234**, reduciendo a **45968** datos de expresión.
+
+Podemos ver a través de un gráfico de barras la expresión que van a presentar los loci de nuestros datos, observando que aunque en general va a ser baja, en algunos es bastante destcable:
+
+```{r}
+media_genes_elim<-apply(datos, 1, mean)
+barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+```
+
+
+### 7.3 Normalización
+
+Ahora que hemos simplificado un poco los datos, llevaremos a cabo un normalizado **TMM**, no es necesario definirlo con la función *normalizeCounts*, ya que por defecto es la que hace:
+
+```{r}
+datos_f <- normalizeCounts(datos)
+maPlot(datos_f[,1], datos_f[,2],
+       pch=19, cex=.5, ylim=c(-8,8), 
+       allCol="darkgrey", lowess=TRUE)
+grid(col="black")
+title("normalización TMM")
+```
+
+
+Podemos observar el efecto de la normalización mirando las expresiones medias de cada gen, comparando los datos en crudo y los datos normalizados:
+
+```{r}
+par(mfrow=c(1,2))
+
+media_genes_elim<-apply(datos, 1, mean)
+barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+
+media_genes_nor<-apply(datos_f, 1, mean)
+barplot(media_genes_nor,main = 'Barplot expresión normalizada', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
+
+```
+
+### 7.4 Identificación de genes diferencialmente expresados (DE)
+
+Para hacer este paso, existen principalmente tres paquetes para hacerlo con características diferentes: *edgeR*, *DESeq* y *tweeDEseq*. En nuestro caso se ha decidido proceder con **edgeR**.
+
+Separamos los grupos para las comparaciones parciales:
+
+```{r}
+primer <- cbind(datos[,1:10],datos[,11:20])
+segun <- cbind(datos[,11:20],datos[,21:30])
+terc <- cbind(datos[,1:10],datos[,21:30])
+```
+
+Primero haremos la comparación de los sujetos de **NIT** y **SFI**:
+
+```{r}
+# Se aplica un refiltrado
+d <- DGEList(counts = primer, group = g1)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_primer <- rowSums(m>1) >= 2
+table(ridx_primer)
+d <- d[ridx_primer,]
+plotMDS(d)
+
+d1 <- estimateCommonDisp(d)
+dtag1 <- estimateTagwiseDisp(d1)
+res.common1  <- exactTest(d1, pair=c("NIT", "SFI"), dispersion="common")
+res.tagwise1 <- exactTest(dtag1, pair=c("NIT", "SFI"), dispersion="tagwise")
+
+plotBCV(dtag1, cex=0.4)
+
+dec1 <- decideTestsDGE(res.common1,p=0.001, adjust="BH")
+dtag_primer <- rownames(d1)[as.logical(dec1)]
+plotSmear(res.common1, de.tags = dtag_primer)
+abline(h=c(-1,1),col="blue")
+
+# así se calculan los genes up/down regulados:
+d1_df <- as.data.frame(dec1)
+d1_df[,2] <- rownames(res.common1)
+up1 <- d1_df[which(d1_df$`SFI-NIT`==1),]
+down1 <- d1_df[which(d1_df$`SFI-NIT`==-1),]
+summary(dec1)
+genes_1 <- c(up1$V2,down1$V2)
+```
+
+A continuación la comparación de los sujetos de **SFI** y **ELI**:
+
+```{r}
+# Se aplica un refiltrado
+d <- DGEList(counts = segun, group = g2)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_segun <- rowSums(m>1) >= 2
+table(ridx_segun)
+d <- d[ridx_segun,]
+plotMDS(d)
+
+d2 <- estimateCommonDisp(d)
+dtag2 <- estimateTagwiseDisp(d2)
+res.common2  <- exactTest(d2, pair=c("SFI", "ELI"), dispersion="common")
+res.tagwise2 <- exactTest(dtag2, pair=c("SFI", "ELI"), dispersion="tagwise")
+
+plotBCV(dtag2, cex=0.4)
+
+dec2 <- decideTestsDGE(res.common2,p=0.001, adjust="BH")
+dtag_segun <- rownames(d2)[as.logical(dec2)]
+plotSmear(res.common2, de.tags = dtag_segun)
+abline(h=c(-1,1),col="blue")
+
+# así se calculan los genes up/down regulados:
+d2_df <- as.data.frame(dec2)
+d2_df[,2] <- rownames(res.common2)
+up2 <- d2_df[which(d2_df$`ELI-SFI`==1),]
+down2 <- d2_df[which(d2_df$`ELI-SFI`==-1),]
+summary(dec2)
+genes_2 <- c(up2$V2,down2$V2)
+```
+
+Finalmente, la comparación de los sujetos de **NIT** y **ELI**:
+
+```{r}
+# Se aplica un refiltrado
+d <- DGEList(counts = terc, group = g3)
+d <- calcNormFactors(d)
+m <- sweep(d$counts, 2, 1e6 / d$samples$lib.size, '*')
+ridx_terc <- rowSums(m>1) >= 2
+table(ridx_terc)
+d <- d[ridx_terc,]
+plotMDS(d)
+
+d3 <- estimateCommonDisp(d)
+dtag3 <- estimateTagwiseDisp(d3)
+res.common3  <- exactTest(d3, pair=c("NIT", "ELI"), dispersion="common")
+res.tagwise3 <- exactTest(dtag3, pair=c("NIT", "ELI"), dispersion="tagwise")
+
+plotBCV(dtag3, cex=0.4)
+
+dec3 <- decideTestsDGE(res.common3,p=0.001, adjust="BH")
+dtag_terc <- rownames(d3)[as.logical(dec3)]
+plotSmear(res.common3, de.tags = dtag_terc)
+abline(h=c(-1,1),col="blue")
+
+# así se calculan los genes up/down regulados:
+d3_df <- as.data.frame(dec3)
+d3_df[,2] <- rownames(res.common3)
+up3 <- d3_df[which(d3_df$`ELI-NIT`==1),]
+down3 <- d3_df[which(d3_df$`ELI-NIT`==-1),]
+summary(dec3)
+genes_3 <- c(up3$V2,down3$V2)
+```
+
+En este *diagrama de Venn* podemos observar los genes que fueron DE en las tres comparaciones, y cuáles de ellos coinciden entre una comparación y otra.
+
+```{r}
+vd <- venn.diagram(x = list("Genes DE NIT-SFI" = genes_1, "Genes DE SFI-ELI" = genes_2,"Genes DE NIT-ELI" = genes_3), fill = brewer.pal(3, "Pastel2"), filename = NULL)
+grid.draw(vd)
+```
+
+Tendremos por tanto un intersecto de los genes DE de las tres comparaciones con los **26** genes DE que hemos visto en el gráfico anterior:
+```{r}
+comunes <- intersect(intersect(genes_1,genes_2),genes_3)
+comunes
+length(comunes)
+
+up<-intersect(intersect(up1$V2,up2$V2),up3$V2)
+length(up)
+
+down<-intersect(intersect(down1$V2,down2$V2),down3$V2)
+length(down)
+```
+
+
+### 7.5 Anotación de los resultados
+
+```{r}
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+
+genes_comunes<-getBM(attributes =  c("hgnc_symbol"), filters = "ensembl_gene_id_version", values =comunes, mart = mart)
+genes_comunes <- genes_comunes[,1]
+genes_comunes
+
+ups<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =up, mart = mart)
+ups
+
+downs<-getBM(attributes =  c("hgnc_symbol","description"), filters = "ensembl_gene_id_version", values =down, mart = mart)
+downs
+```
+
+
+### 7.6 Análisis de significación biológica (Gene Enrichment Analysis)
+
+```{r}
+#Debemos calcular también las anotaciones para el total de los genes con los que se ha trabajado
+genes_totales<-getBM(attributes =  c("hgnc_symbol","go_id"), filters = "ensembl_gene_id_version", values =rownames(datos), mart = mart)
+head(genes_totales,10)
+
+
+# Eliminamos los que no cuenten con GO, para que no interfieran
+borr <- which(genes_totales$go_id=="")
+dim(genes_totales)
+genes_totales <- genes_totales[-borr,]
+dim(genes_totales)
+
+# convertir en lista para poder calcular el objeto topGo
+l_genes <- unique(genes_totales$hgnc_symbol)
+lista <- list()
+for (i in l_genes) {
+  lista[[i]] = genes_totales[which(genes_totales$hgnc_symbol==i),]$go_id
+}
+head(lista,2)
+
+gen <- names(lista)
+gen_comparado <- factor(as.integer(gen %in% genes_comunes))
+table(gen_comparado)
+names(gen_comparado) <- gen
+
+GO_data <- new("topGOdata", ontology="BP", allGenes=gen_comparado,annot = annFUN.gene2GO, gene2GO = lista)
+
+# se le acplicará el test de Fisher al objeto topGo
+resFisher = runTest(GO_data, algorithm = 'classic', statistic = 'fisher')
+resFisher
+```
+
+De las **4399** anotaciones GO totales, **659** de 12 genes DE fueron analizados. De estos GO, **78** obtienen una significación de *p < 0.01*, debido a que aún son muchos para representar gráficamente, solo cogeremos los 25 primeros para que sea más sencillo de leer:
+
+```{r}
+Nodes = 25
+allRes = GenTable(GO_data, classicFisher = resFisher, topNodes = Nodes)
+head(allRes)
+
+
+# Plots
+plotEnrich = function(allRes, title){
+  # Plotting!
+  layout(t(1:2), widths = c(8,1))
+  par(mar=c(4, .5, .7, .7), oma = c(3, 15, 3, 4), las = 1)
+  
+  rbPal = colorRampPalette(c('red', 'white', 'blue'))
+  pvalue = as.numeric(gsub("<", "", allRes$classicFisher))
+  max_value = as.integer(max(-log(pvalue))) + 1
+  pv_range = exp(-seq(max_value, 0, -1))
+  allRes$Color = rbPal(max_value) [cut(pvalue, pv_range)]
+  
+  o = order(allRes$Significant, decreasing = T)
+  barplot(allRes$Significant[o], names.arg = allRes$Term[o], las = 2, horiz = T, col = allRes$Color[o],
+          xlab = "Number of sequences", main = title, cex.names = 0.85)
+  
+  image(0, seq(1, max_value), t(seq_along(seq(1, max_value))), col = rev(rbPal(max_value)), axes = F, ann = F)
+  pv_label = exp(-seq(log(1), -log(min(pvalue)), l = 6))
+  pv_label = formatC(pv_label, format = "e", digits = 2)
+  axis(4, at = seq(1, max_value, length = 6), labels = c(1, pv_label[2:6]), cex.axis = 0.85)
+  title("p.value", cex.main = 0.6)
+}
+
+plotEnrich(allRes = allRes, title = 'Enrichment Analysis')
+```
+
+</div>
