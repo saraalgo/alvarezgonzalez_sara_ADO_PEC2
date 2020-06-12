@@ -1,0 +1,10 @@
+INFO [2020-06-12 10:35:00] $x
+INFO [2020-06-12 10:35:00] list(`Genes DE NIT-SFI` = genes_1, `Genes DE SFI-ELI` = genes_2, 
+INFO [2020-06-12 10:35:00]     `Genes DE NIT-ELI` = genes_3)
+INFO [2020-06-12 10:35:00] 
+INFO [2020-06-12 10:35:00] $fill
+INFO [2020-06-12 10:35:00] brewer.pal(3, "Pastel2")
+INFO [2020-06-12 10:35:00] 
+INFO [2020-06-12 10:35:00] $filename
+INFO [2020-06-12 10:35:00] NULL
+INFO [2020-06-12 10:35:00] 

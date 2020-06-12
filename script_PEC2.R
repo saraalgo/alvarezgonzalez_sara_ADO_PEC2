@@ -44,14 +44,15 @@ borrar<-datos[which(med_gen ==0),]
 i<-intersect(rownames(borrar), rownames(datos))
 datos<-datos[!rownames(datos)%in% i,]
 
-media_genes_elim<-apply(datos, 1, mean)
+datos_sinnorm <- datos
+media_genes_elim<-apply(datos_sinnorm, 1, mean)
 barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
 
 
 ### 7.3 Normalización
 
-datos_f <- normalizeCounts(datos)
-maPlot(datos_f[,1], datos_f[,2],
+datos <- normalizeCounts(datos)
+maPlot(datos[,1], datos[,2],
        pch=19, cex=.5, ylim=c(-8,8), 
        allCol="darkgrey", lowess=TRUE)
 grid(col="black")
@@ -59,10 +60,10 @@ title("normalización TMM")
 
 par(mfrow=c(1,2))
 
-media_genes_elim<-apply(datos, 1, mean)
+media_genes_elim<-apply(datos_sinnorm, 1, mean)
 barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
 
-media_genes_nor<-apply(datos_f, 1, mean)
+media_genes_nor<-apply(datos, 1, mean)
 barplot(media_genes_nor,main = 'Barplot expresión normalizada', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
 
 ### 7.4 Identificación de genes diferencialmente expresados (DE)

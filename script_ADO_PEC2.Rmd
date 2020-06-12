@@ -60,7 +60,8 @@ borrar<-datos[which(med_gen ==0),]
 i<-intersect(rownames(borrar), rownames(datos))
 datos<-datos[!rownames(datos)%in% i,]
 media_genes_elim<-apply(datos, 1, mean)
-datos_f <- normalizeCounts(datos)
+datos_sinnorm <- datos
+datos <- normalizeCounts(datos)
 primer <- cbind(datos[,1:10],datos[,11:20])
 segun <- cbind(datos[,11:20],datos[,21:30])
 terc <- cbind(datos[,1:10],datos[,21:30])
@@ -174,7 +175,7 @@ plotEnrich = function(allRes, title){
 
 Actualmente, el estudio de los niveles de expresión génica se lleva a cabo con la técnica **RNA-seq**, la cual se basa en secuenciar el mRNA y posteriormente mapearlo en secuencias de referencia. En este trabajo, se va a estudiar el efecto de esta expresión buscando si existe diferencias en los resultados obtenidos si variamos los métodos de infiltración con tres técnicas diferentes (**NIT, SFI y ELI**) para un mismo tipo de tejido, en este caso, de la tiroides.
 
-Se puede encontrar en el repositorio de GIT **saraalgo/alvarezgonzalez_sara_ADO_PEC2** el git del proceso de construcción de este estudio para poder ser replicado.
+Se puede encontrar en el repositorio de GIT **https://github.com/saraalgo/alvarezgonzalez_sara_ADO_PEC2** el git del proceso de construcción de este estudio para poder ser replicado.
 
 ## 2. Objetivos
 
@@ -260,8 +261,8 @@ La **normalización** sería el siguiente paso, esta técnica es un reescalado l
 Podemos observar mediante el *MAplot* que efectivamente los datos, una vez sometidos a esta normalización con la función *normalizeCounts* van a mostrar una menos variabilidad, permitiendo un mejor análisis posterior.
 
 ```{r}
-datos_f <- normalizeCounts(datos)
-maPlot(datos_f[,1], datos_f[,2],
+datos <- normalizeCounts(datos)
+maPlot(datos[,1], datos[,2],
        pch=19, cex=.5, ylim=c(-8,8), 
        allCol="darkgrey", lowess=TRUE)
 grid(col="black")
@@ -369,7 +370,7 @@ resFisher
 
 De las **4399** anotaciones GO totales, **659** de 12 genes DE fueron analizados. De estos GO, **78** obtienen una significación de *p < 0.01*.
 
-## 6. Conclusión
+## 5. Conclusión
 
 Para poder hace alguna interpretación biológica y sacar una breve conclusión de los datos obtenidos, se ha realizado el plot del enriquecimiento realizado para la significación biológica. En concreto, se representan 25 de klas 78 anotaciones más importantes significativamente, para facilitar su lectura.
 
@@ -380,11 +381,11 @@ allRes$Term
 
 Como podemos observar, la todos las funciones asociadas a los GO más significativos van a estar relacionados con funciones claramente vinculadas a la glándula tiroidea, tal y como se esperaba debido a que son muestras de este mismo tejido. Con lo cual, a pesar de tratarse de infiltraciones diferentes, las tres van a recoger expresiones de RNA-seq, cuya anotación biológica va a estar vinculada al sistema inmune y la tiroides.
 
-## 7. Apéndice
+## 6. Apéndice
 
 En esta sección está el código completo utilizado.
 
-### 7.1 Extraer datos
+### 6.1 Extraer datos
 
 Cargamos los datos que nos dan:
 
@@ -430,7 +431,7 @@ rownames(datos) <- counts[,1]
 #write.csv(datos,"datos.csv", row.names = FALSE)
 ```
 
-### 7.2 Filtrado
+### 6.2 Filtrado
 
 En primer lugar haremos un pequeño análisis de calidad:
 
@@ -457,18 +458,19 @@ Así pues han sido eliminados **10234**, reduciendo a **45968** datos de expresi
 Podemos ver a través de un gráfico de barras la expresión que van a presentar los loci de nuestros datos, observando que aunque en general va a ser baja, en algunos es bastante destcable:
 
 ```{r}
-media_genes_elim<-apply(datos, 1, mean)
+datos_sinnorm <- datos
+media_genes_elim<-apply(datos_sinnorm, 1, mean)
 barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
 ```
 
 
-### 7.3 Normalización
+### 6.3 Normalización
 
 Ahora que hemos simplificado un poco los datos, llevaremos a cabo un normalizado **TMM**, no es necesario definirlo con la función *normalizeCounts*, ya que por defecto es la que hace:
 
 ```{r}
-datos_f <- normalizeCounts(datos)
-maPlot(datos_f[,1], datos_f[,2],
+datos <- normalizeCounts(datos)
+maPlot(datos[,1], datos[,2],
        pch=19, cex=.5, ylim=c(-8,8), 
        allCol="darkgrey", lowess=TRUE)
 grid(col="black")
@@ -481,15 +483,15 @@ Podemos observar el efecto de la normalización mirando las expresiones medias d
 ```{r}
 par(mfrow=c(1,2))
 
-media_genes_elim<-apply(datos, 1, mean)
+media_genes_elim<-apply(datos_sinnorm, 1, mean)
 barplot(media_genes_elim,main = 'Barplot expresión cruda', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
 
-media_genes_nor<-apply(datos_f, 1, mean)
+media_genes_nor<-apply(datos, 1, mean)
 barplot(media_genes_nor,main = 'Barplot expresión normalizada', xlim=NULL, xlab = 'Genes', ylab='Frecuencia')
 
 ```
 
-### 7.4 Identificación de genes diferencialmente expresados (DE)
+### 6.4 Identificación de genes diferencialmente expresados (DE)
 
 Para hacer este paso, existen principalmente tres paquetes para hacerlo con características diferentes: *edgeR*, *DESeq* y *tweeDEseq*. En nuestro caso se ha decidido proceder con **edgeR**.
 
@@ -621,7 +623,7 @@ length(down)
 ```
 
 
-### 7.5 Anotación de los resultados
+### 6.5 Anotación de los resultados
 
 ```{r}
 mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
@@ -638,7 +640,7 @@ downs
 ```
 
 
-### 7.6 Análisis de significación biológica (Gene Enrichment Analysis)
+### 6.6 Análisis de significación biológica (Gene Enrichment Analysis)
 
 ```{r}
 #Debemos calcular también las anotaciones para el total de los genes con los que se ha trabajado
